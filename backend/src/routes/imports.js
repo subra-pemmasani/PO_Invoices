@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { parse } from 'csv-parse/sync';
 import { prisma } from '../prisma.js';
 import { requirePermission } from '../middleware/auth.js';
 import { syncPOStatus } from './purchaseOrders.js';
@@ -8,15 +9,11 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 function parseCsv(buffer) {
-  const text = buffer.toString('utf-8').trim();
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  const headers = lines[0].split(',').map((h) => h.trim());
-  return lines.slice(1).map((line) => {
-    const values = line.split(',').map((v) => v.trim());
-    return headers.reduce((acc, key, i) => {
-      acc[key] = values[i] ?? '';
-      return acc;
-    }, {});
+  return parse(buffer, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    bom: true
   });
 }
 
@@ -68,58 +65,85 @@ router.post('/:entity', requirePermission('write'), upload.single('file'), async
   try {
     if (!req.file) return res.status(400).json({ error: 'CSV file is required as form-data field: file' });
     const rows = parseCsv(req.file.buffer);
-    let created = 0;
+    let upserted = 0;
+    let skipped = 0;
 
     if (req.params.entity === 'cost-codes') {
       for (const row of rows) {
+        if (!row.code || !row.name) {
+          skipped += 1;
+          continue;
+        }
         await prisma.costCode.upsert({
           where: { code: row.code },
           update: { name: row.name },
           create: { code: row.code, name: row.name }
         });
-        created += 1;
+        upserted += 1;
       }
     } else if (req.params.entity === 'vendors') {
       for (const row of rows) {
+        const name = String(row.name || '').trim();
+        if (!name) {
+          skipped += 1;
+          continue;
+        }
+        const email = String(row.email || '').trim() || null;
+        const phone = String(row.phone || '').trim() || null;
         await prisma.vendor.upsert({
-          where: { name: row.name },
-          update: { email: row.email || null, phone: row.phone || null },
-          create: { name: row.name, email: row.email || null, phone: row.phone || null }
+          where: { name },
+          update: { email, phone },
+          create: { name, email, phone, createdBy: req.user.email, updatedBy: req.user.email }
         });
-        created += 1;
+        upserted += 1;
       }
     } else if (req.params.entity === 'budgets') {
       for (const row of rows) {
+        if (!row.year || !row.costCodeId || row.amount === undefined || row.amount === null || row.amount === '') {
+          skipped += 1;
+          continue;
+        }
         await prisma.budget.upsert({
           where: { year_costCodeId: { year: Number(row.year), costCodeId: row.costCodeId } },
-          update: { amount: Number(row.amount) },
-          create: { year: Number(row.year), costCodeId: row.costCodeId, amount: Number(row.amount) }
+          update: { amount: Number(row.amount), updatedBy: req.user.email },
+          create: { year: Number(row.year), costCodeId: row.costCodeId, amount: Number(row.amount), createdBy: req.user.email, updatedBy: req.user.email }
         });
-        created += 1;
+        upserted += 1;
       }
     } else if (req.params.entity === 'purchase-orders') {
       for (const row of rows) {
+        if (!row.poNumber || !row.vendorId || !row.issuedDate) {
+          skipped += 1;
+          continue;
+        }
         const po = await prisma.purchaseOrder.upsert({
           where: { poNumber: row.poNumber },
           update: {
             vendorId: row.vendorId,
             issuedDate: new Date(row.issuedDate),
             description: row.description || null,
-            totalAmount: Number(row.totalAmount || 0)
+            totalAmount: Number(row.totalAmount || 0),
+            updatedBy: req.user.email
           },
           create: {
             poNumber: row.poNumber,
             vendorId: row.vendorId,
             issuedDate: new Date(row.issuedDate),
             description: row.description || null,
-            totalAmount: Number(row.totalAmount || 0)
+            totalAmount: Number(row.totalAmount || 0),
+            createdBy: req.user.email,
+            updatedBy: req.user.email
           }
         });
         await syncPOStatus(po.id);
-        created += 1;
+        upserted += 1;
       }
     } else if (req.params.entity === 'po-line-items') {
       for (const row of rows) {
+        if (!row.purchaseOrderId || !row.costCodeId || !row.amount) {
+          skipped += 1;
+          continue;
+        }
         await prisma.pOLineItem.create({
           data: {
             purchaseOrderId: row.purchaseOrderId,
@@ -129,17 +153,22 @@ router.post('/:entity', requirePermission('write'), upload.single('file'), async
           }
         });
         await refreshPoTotal(row.purchaseOrderId);
-        created += 1;
+        upserted += 1;
       }
     } else if (req.params.entity === 'invoices') {
       for (const row of rows) {
+        if (!row.purchaseOrderId || !row.invoiceNumber || !row.invoiceDate || !row.amount) {
+          skipped += 1;
+          continue;
+        }
         const invoice = await prisma.invoice.upsert({
           where: { purchaseOrderId_invoiceNumber: { purchaseOrderId: row.purchaseOrderId, invoiceNumber: row.invoiceNumber } },
           update: {
             invoiceDate: new Date(row.invoiceDate),
             amount: Number(row.amount),
             description: row.description || null,
-            allocationMode: row.allocationMode || 'PROPORTIONAL'
+            allocationMode: row.allocationMode || 'PROPORTIONAL',
+            updatedBy: req.user.email
           },
           create: {
             purchaseOrderId: row.purchaseOrderId,
@@ -147,17 +176,19 @@ router.post('/:entity', requirePermission('write'), upload.single('file'), async
             invoiceDate: new Date(row.invoiceDate),
             amount: Number(row.amount),
             description: row.description || null,
-            allocationMode: row.allocationMode || 'PROPORTIONAL'
+            allocationMode: row.allocationMode || 'PROPORTIONAL',
+            createdBy: req.user.email,
+            updatedBy: req.user.email
           }
         });
         await syncPOStatus(invoice.purchaseOrderId);
-        created += 1;
+        upserted += 1;
       }
     } else {
       return res.status(400).json({ error: 'Unsupported entity. Use vendors, cost-codes, budgets, purchase-orders, po-line-items, invoices' });
     }
 
-    return res.json({ entity: req.params.entity, rowsProcessed: rows.length, rowsUpserted: created });
+    return res.json({ entity: req.params.entity, rowsProcessed: rows.length, rowsUpserted: upserted, rowsSkipped: skipped });
   } catch (error) {
     next(error);
   }

@@ -87,8 +87,12 @@ export default function App() {
     if (!file) return;
     try {
       const result = await api.uploadCsv(entity, file);
-      setUploadStatus(`${entity}: ${result.rowsUpserted} rows processed`);
-      await refresh();
+      setUploadStatus(`${entity}: processed ${result.rowsProcessed}, upserted ${result.rowsUpserted}, skipped ${result.rowsSkipped ?? 0}`);
+      try {
+        await refresh();
+      } catch (_e) {
+        setError('Upload succeeded, but refresh failed. Please reload the page.');
+      }
     } catch (e) {
       setUploadStatus(`Upload failed: ${e.message}`);
     }
