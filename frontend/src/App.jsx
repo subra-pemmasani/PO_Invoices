@@ -75,10 +75,15 @@ export default function App() {
     return (
       <div className="app panel">
         <h2>Sign In</h2>
-        <p>Enter your existing user email to access the app.</p>
+        <p>Use one of the seeded users: <strong>admin@demo.local</strong>, <strong>approver@demo.local</strong>, or <strong>viewer@demo.local</strong>.</p>
         <form onSubmit={(e) => { e.preventDefault(); setAuthEmail(authEmail); }}>
-          <input value={authEmail} placeholder="user@company.com" onChange={(e) => setEmail(e.target.value)} required />
+          <input value={authEmail} placeholder="admin@demo.local" onChange={(e) => setEmail(e.target.value)} required />
           <button type="submit">Continue</button>
+          <div className="quick-login">
+            <button type="button" onClick={() => setEmail('admin@demo.local')}>Use Admin</button>
+            <button type="button" onClick={() => setEmail('approver@demo.local')}>Use Approver</button>
+            <button type="button" onClick={() => setEmail('viewer@demo.local')}>Use Viewer</button>
+          </div>
         </form>
       </div>
     );
@@ -225,7 +230,14 @@ export default function App() {
         <section>
           <div className="panel">
             <h3>CSV Uploads</h3>
-            <p>Upload CSV files with headers matching backend fields.</p>
+            <p>Upload CSV files with headers matching backend fields. Download templates first:</p>
+            <ul>
+              <li><a href="/csv-templates/vendors.csv" download>vendors.csv template</a></li>
+              <li><a href="/csv-templates/cost-codes.csv" download>cost-codes.csv template</a></li>
+              <li><a href="/csv-templates/budgets.csv" download>budgets.csv template</a></li>
+              <li><a href="/csv-templates/purchase-orders.csv" download>purchase-orders.csv template</a></li>
+              <li><a href="/csv-templates/invoices.csv" download>invoices.csv template</a></li>
+            </ul>
             <div className="grid-3">
               <label>Vendors CSV <input type="file" accept=".csv" onChange={(e) => doUpload('vendors', e.target.files?.[0])} /></label>
               <label>Cost Codes CSV <input type="file" accept=".csv" onChange={(e) => doUpload('cost-codes', e.target.files?.[0])} /></label>

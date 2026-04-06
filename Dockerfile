@@ -22,4 +22,4 @@ ENV NODE_ENV=production
 ENV PORT=8080
 
 EXPOSE 8080
-CMD ["sh", "-c", "npx prisma generate && until npx prisma db push; do echo 'Database not ready, retrying in 3s...'; sleep 3; done; node src/index.js"]
+CMD ["sh", "-c", "npx prisma generate && until npx prisma db push; do echo 'Database not ready, retrying in 3s...'; sleep 3; done; node src/seed.js; node src/index.js"]
