@@ -1,0 +1,2 @@
+purchaseOrderId,invoiceNumber,invoiceDate,amount,description,allocationMode
+REPLACE_WITH_PO_ID,INV-2026-003,2026-04-10,12000,Sample invoice,PROPORTIONAL
