@@ -52,7 +52,7 @@ This repo now includes a production `Dockerfile` that serves both API and fronte
 - Optional: `PORT` (defaults to `8080`)
 
 ### Container behavior
-- On startup, container runs `prisma db push` and starts Express.
+- On startup, container retries `prisma db push` until DB is reachable, then starts Express.
 - Express serves:
   - API under `/api/*`
   - React app static files from `/`
@@ -61,7 +61,17 @@ This repo now includes a production `Dockerfile` that serves both API and fronte
 1. **No database URL configured** → container exits before listening.
 2. **Database host blocked/firewalled** → startup fails on Prisma connection.
 3. **Wrong exposed/internal port** → map external traffic to container port `8080`.
-4. **Old image without frontend static serving** → ensure latest image is deployed.
+4. **App started before DB accepted connections** → fixed by retry loop + DB healthcheck in compose.
+5. **Old image without frontend static serving** → ensure latest image is deployed.
+
+
+### Verify app container is healthy
+```bash
+docker compose ps
+docker compose logs app --tail=100
+```
+
+You should see `Server listening on http://0.0.0.0:8080` in app logs.
 
 ## API (selected)
 - `GET/POST/PUT/DELETE /api/budgets`
