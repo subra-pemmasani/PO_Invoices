@@ -17,7 +17,7 @@ Full-stack web application for budget planning, purchase order management, invoi
 - **Role-based access**: Admin / Approver / Viewer via request headers
 - **Excel export**: PO and invoice workbook download
 
-## Quick Start
+## Local development
 
 ### 1) Start PostgreSQL
 ```bash
@@ -33,7 +33,7 @@ npx prisma migrate dev --name init
 npm run dev
 ```
 
-Server runs at `http://localhost:4000`.
+Server runs at `http://localhost:8080`.
 
 ### 3) Frontend
 ```bash
@@ -43,6 +43,25 @@ npm run dev
 ```
 
 UI runs at `http://localhost:5173`.
+
+## Hostinger Docker Manager deployment
+This repo now includes a production `Dockerfile` that serves both API and frontend from one container.
+
+### Required environment variables
+- `DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public`
+- Optional: `PORT` (defaults to `8080`)
+
+### Container behavior
+- On startup, container runs `prisma db push` and starts Express.
+- Express serves:
+  - API under `/api/*`
+  - React app static files from `/`
+
+### Common "didn’t send any data" causes
+1. **No database URL configured** → container exits before listening.
+2. **Database host blocked/firewalled** → startup fails on Prisma connection.
+3. **Wrong exposed/internal port** → map external traffic to container port `8080`.
+4. **Old image without frontend static serving** → ensure latest image is deployed.
 
 ## API (selected)
 - `GET/POST/PUT/DELETE /api/budgets`
