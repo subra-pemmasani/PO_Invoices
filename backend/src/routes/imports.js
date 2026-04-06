@@ -20,6 +20,50 @@ function parseCsv(buffer) {
   });
 }
 
+function toCsv(rows) {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    lines.push(headers.map((h) => String(row[h] ?? '')).join(','));
+  }
+  return lines.join('\n');
+}
+
+async function refreshPoTotal(poId) {
+  const lines = await prisma.pOLineItem.findMany({ where: { purchaseOrderId: poId } });
+  const totalAmount = lines.reduce((sum, li) => sum + Number(li.amount), 0);
+  await prisma.purchaseOrder.update({ where: { id: poId }, data: { totalAmount } });
+  await syncPOStatus(poId);
+}
+
+router.get('/export/:entity', requirePermission('read'), async (req, res, next) => {
+  try {
+    let rows = [];
+    if (req.params.entity === 'vendors') {
+      rows = await prisma.vendor.findMany({ select: { id: true, name: true, email: true, phone: true }, orderBy: { name: 'asc' } });
+    } else if (req.params.entity === 'cost-codes') {
+      rows = await prisma.costCode.findMany({ select: { id: true, code: true, name: true }, orderBy: { code: 'asc' } });
+    } else if (req.params.entity === 'budgets') {
+      rows = await prisma.budget.findMany({ select: { id: true, year: true, costCodeId: true, amount: true }, orderBy: [{ year: 'desc' }] });
+    } else if (req.params.entity === 'purchase-orders') {
+      rows = await prisma.purchaseOrder.findMany({ select: { id: true, poNumber: true, vendorId: true, issuedDate: true, description: true, totalAmount: true }, orderBy: { issuedDate: 'desc' } });
+    } else if (req.params.entity === 'po-line-items') {
+      rows = await prisma.pOLineItem.findMany({ select: { id: true, purchaseOrderId: true, costCodeId: true, amount: true, description: true } });
+    } else if (req.params.entity === 'invoices') {
+      rows = await prisma.invoice.findMany({ select: { id: true, purchaseOrderId: true, invoiceNumber: true, invoiceDate: true, amount: true, description: true, allocationMode: true } });
+    } else {
+      return res.status(400).json({ error: 'Unsupported entity for export' });
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.entity}.csv"`);
+    res.send(toCsv(rows));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/:entity', requirePermission('write'), upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'CSV file is required as form-data field: file' });
@@ -74,6 +118,19 @@ router.post('/:entity', requirePermission('write'), upload.single('file'), async
         await syncPOStatus(po.id);
         created += 1;
       }
+    } else if (req.params.entity === 'po-line-items') {
+      for (const row of rows) {
+        await prisma.pOLineItem.create({
+          data: {
+            purchaseOrderId: row.purchaseOrderId,
+            costCodeId: row.costCodeId,
+            amount: Number(row.amount),
+            description: row.description || null
+          }
+        });
+        await refreshPoTotal(row.purchaseOrderId);
+        created += 1;
+      }
     } else if (req.params.entity === 'invoices') {
       for (const row of rows) {
         const invoice = await prisma.invoice.upsert({
@@ -97,7 +154,7 @@ router.post('/:entity', requirePermission('write'), upload.single('file'), async
         created += 1;
       }
     } else {
-      return res.status(400).json({ error: 'Unsupported entity. Use vendors, cost-codes, budgets, purchase-orders, invoices' });
+      return res.status(400).json({ error: 'Unsupported entity. Use vendors, cost-codes, budgets, purchase-orders, po-line-items, invoices' });
     }
 
     return res.json({ entity: req.params.entity, rowsProcessed: rows.length, rowsUpserted: created });

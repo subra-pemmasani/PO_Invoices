@@ -12,13 +12,15 @@ export function setAuthEmail(email) {
 
 async function request(path, options = {}) {
   const email = getAuthEmail();
+  const baseHeaders = {
+    ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+    'x-user-email': email
+  };
+  const mergedHeaders = { ...baseHeaders, ...(options.headers || {}) };
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      'x-user-email': email,
-      ...(options.headers || {})
-    },
-    ...options
+    ...options,
+    headers: mergedHeaders
   });
 
   if (!response.ok) {
@@ -28,6 +30,24 @@ async function request(path, options = {}) {
 
   if (response.status === 204) return null;
   return response.json();
+}
+
+async function downloadCsv(entity) {
+  const email = getAuthEmail();
+  const response = await fetch(`${API_BASE}/imports/export/${entity}`, {
+    headers: { 'x-user-email': email }
+  });
+  if (!response.ok) throw new Error('Failed to download CSV');
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${entity}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {
@@ -48,7 +68,8 @@ export const api = {
   uploadCsv: async (entity, file) => {
     const form = new FormData();
     form.append('file', file);
-    return request(`/imports/${entity}`, { method: 'POST', body: form, headers: {} });
+    return request(`/imports/${entity}`, { method: 'POST', body: form });
   },
+  downloadCsv,
   exportExcel: () => `${API_BASE}/exports/excel`
 };

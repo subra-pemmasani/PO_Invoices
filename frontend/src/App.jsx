@@ -9,7 +9,8 @@ const tabs = ['Dashboard', 'Master Data', 'Budgets', 'Purchase Orders', 'Invoice
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('Dashboard');
-  const [authEmail, setEmail] = useState(localStorage.getItem('po_auth_email') || '');
+  const [authEmail, setAuthSessionEmail] = useState(localStorage.getItem('po_auth_email') || '');
+  const [loginEmail, setLoginEmail] = useState(localStorage.getItem('po_auth_email') || '');
   const [costCodes, setCostCodes] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [users, setUsers] = useState([]);
@@ -76,13 +77,13 @@ export default function App() {
       <div className="app panel">
         <h2>Sign In</h2>
         <p>Use one of the seeded users: <strong>admin@demo.local</strong>, <strong>approver@demo.local</strong>, or <strong>viewer@demo.local</strong>.</p>
-        <form onSubmit={(e) => { e.preventDefault(); setAuthEmail(authEmail); }}>
-          <input value={authEmail} placeholder="admin@demo.local" onChange={(e) => setEmail(e.target.value)} required />
+        <form onSubmit={(e) => { e.preventDefault(); setAuthEmail(loginEmail); setAuthSessionEmail(loginEmail); }}>
+          <input value={loginEmail} placeholder="admin@demo.local" onChange={(e) => setLoginEmail(e.target.value)} required />
           <button type="submit">Continue</button>
           <div className="quick-login">
-            <button type="button" onClick={() => setEmail('admin@demo.local')}>Use Admin</button>
-            <button type="button" onClick={() => setEmail('approver@demo.local')}>Use Approver</button>
-            <button type="button" onClick={() => setEmail('viewer@demo.local')}>Use Viewer</button>
+            <button type="button" onClick={() => setLoginEmail('admin@demo.local')}>Use Admin</button>
+            <button type="button" onClick={() => setLoginEmail('approver@demo.local')}>Use Approver</button>
+            <button type="button" onClick={() => setLoginEmail('viewer@demo.local')}>Use Viewer</button>
           </div>
         </form>
       </div>
@@ -95,7 +96,7 @@ export default function App() {
         <h1>Budget, PO & Invoice Tracker</h1>
         <div className="actions">
           <span className="user-chip">{authEmail}</span>
-          <button onClick={() => { setAuthEmail(''); setEmail(''); refresh(); }}>Sign out</button>
+          <button onClick={() => { setAuthEmail(''); setAuthSessionEmail(''); setLoginEmail(''); refresh(); }}>Sign out</button>
           <a className="button-link" href={api.exportExcel()} target="_blank">Export Excel</a>
         </div>
       </header>
@@ -230,12 +231,13 @@ export default function App() {
         <section>
           <div className="panel">
             <h3>CSV Uploads</h3>
-            <p>Upload CSV files with headers matching backend fields. Download templates first:</p>
+            <p>Upload CSV files with headers matching backend fields. Download template or existing data with IDs:</p>
             <ul>
               <li><a href="/csv-templates/vendors.csv" download>vendors.csv template</a></li>
               <li><a href="/csv-templates/cost-codes.csv" download>cost-codes.csv template</a></li>
               <li><a href="/csv-templates/budgets.csv" download>budgets.csv template</a></li>
               <li><a href="/csv-templates/purchase-orders.csv" download>purchase-orders.csv template</a></li>
+              <li><a href="/csv-templates/po-line-items.csv" download>po-line-items.csv template</a></li>
               <li><a href="/csv-templates/invoices.csv" download>invoices.csv template</a></li>
             </ul>
             <div className="grid-3">
@@ -243,7 +245,18 @@ export default function App() {
               <label>Cost Codes CSV <input type="file" accept=".csv" onChange={(e) => doUpload('cost-codes', e.target.files?.[0])} /></label>
               <label>Budgets CSV <input type="file" accept=".csv" onChange={(e) => doUpload('budgets', e.target.files?.[0])} /></label>
               <label>PO CSV <input type="file" accept=".csv" onChange={(e) => doUpload('purchase-orders', e.target.files?.[0])} /></label>
+              <label>PO Line Items CSV <input type="file" accept=".csv" onChange={(e) => doUpload('po-line-items', e.target.files?.[0])} /></label>
               <label>Invoices CSV <input type="file" accept=".csv" onChange={(e) => doUpload('invoices', e.target.files?.[0])} /></label>
+            </div>
+
+            <h4>Download current data with IDs</h4>
+            <div className="quick-login">
+              <button type="button" onClick={() => api.downloadCsv('vendors')}>Export vendors.csv</button>
+              <button type="button" onClick={() => api.downloadCsv('cost-codes')}>Export cost-codes.csv</button>
+              <button type="button" onClick={() => api.downloadCsv('budgets')}>Export budgets.csv</button>
+              <button type="button" onClick={() => api.downloadCsv('purchase-orders')}>Export purchase-orders.csv</button>
+              <button type="button" onClick={() => api.downloadCsv('po-line-items')}>Export po-line-items.csv</button>
+              <button type="button" onClick={() => api.downloadCsv('invoices')}>Export invoices.csv</button>
             </div>
             {uploadStatus && <p>{uploadStatus}</p>}
           </div>
