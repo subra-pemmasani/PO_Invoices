@@ -18,9 +18,14 @@ const publicDir = path.resolve(__dirname, '../public');
 
 app.use(cors());
 app.use(express.json());
-app.use(authenticateUser);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+// Public web assets and SPA shell must be accessible without auth header
+app.use(express.static(publicDir));
+
+// Protect only API routes
+app.use('/api', authenticateUser);
 app.use('/api/budgets', budgetsRouter);
 app.use('/api/purchase-orders', poRouter);
 app.use('/api/invoices', invoicesRouter);
@@ -29,7 +34,6 @@ app.use('/api/exports', exportRouter);
 app.use('/api/master', masterDataRouter);
 app.use('/api/imports', importRouter);
 
-app.use(express.static(publicDir));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return next();
   return res.sendFile(path.join(publicDir, 'index.html'));
