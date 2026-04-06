@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  APPROVER
+  VIEWER
+}
+
+enum POStatus {
+  OPEN
+  PARTIALLY_INVOICED
+  FULLY_INVOICED
+  CLOSED
+  CANCELLED
+}
+
+enum InvoiceAllocationMode {
+  EXACT
+  PROPORTIONAL
+  NONE
+}
+
+model User {
+  id         String    @id @default(cuid())
+  name       String
+  email      String    @unique
+  role       Role      @default(VIEWER)
+  clearances Invoice[] @relation("ClearedBy")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Vendor {
+  id             String          @id @default(cuid())
+  name           String          @unique
+  email          String?
+  phone          String?
+  purchaseOrders PurchaseOrder[]
+  createdBy      String?
+  updatedBy      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model CostCode {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  budgets     Budget[]
+  poLineItems POLineItem[]
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Budget {
+  id         String   @id @default(cuid())
+  year       Int
+  amount     Decimal  @db.Decimal(14, 2)
+  costCodeId String
+  costCode   CostCode @relation(fields: [costCodeId], references: [id], onDelete: Cascade)
+  createdBy  String?
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([year, costCodeId])
+}
+
+model PurchaseOrder {
+  id          String      @id @default(cuid())
+  poNumber    String      @unique
+  vendorId    String
+  vendor      Vendor      @relation(fields: [vendorId], references: [id])
+  issuedDate  DateTime
+  description String?
+  totalAmount Decimal     @db.Decimal(14, 2)
+  status      POStatus    @default(OPEN)
+  lineItems   POLineItem[]
+  invoices    Invoice[]
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model POLineItem {
+  id              String              @id @default(cuid())
+  purchaseOrderId String
+  costCodeId      String
+  description     String?
+  amount          Decimal             @db.Decimal(14, 2)
+  purchaseOrder   PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  costCode        CostCode            @relation(fields: [costCodeId], references: [id])
+  invoiceAllocations InvoiceAllocation[]
+}
+
+model Invoice {
+  id              String                @id @default(cuid())
+  purchaseOrderId String
+  invoiceNumber   String
+  invoiceDate     DateTime
+  amount          Decimal               @db.Decimal(14, 2)
+  description     String?
+  allocationMode  InvoiceAllocationMode @default(NONE)
+  allocations     InvoiceAllocation[]
+  cleared         Boolean               @default(false)
+  clearanceDate   DateTime?
+  clearedById     String?
+  purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  clearedBy       User?                 @relation("ClearedBy", fields: [clearedById], references: [id])
+  createdBy       String?
+  updatedBy       String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([purchaseOrderId, invoiceNumber])
+}
+
+model InvoiceAllocation {
+  id           String    @id @default(cuid())
+  invoiceId    String
+  poLineItemId String
+  amount       Decimal   @db.Decimal(14, 2)
+  invoice      Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  poLineItem   POLineItem @relation(fields: [poLineItemId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, poLineItemId])
+}
