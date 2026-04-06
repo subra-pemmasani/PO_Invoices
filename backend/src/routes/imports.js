@@ -81,14 +81,16 @@ router.post('/:entity', requirePermission('write'), upload.single('file'), async
           update: {
             invoiceDate: new Date(row.invoiceDate),
             amount: Number(row.amount),
-            description: row.description || null
+            description: row.description || null,
+            allocationMode: row.allocationMode || 'PROPORTIONAL'
           },
           create: {
             purchaseOrderId: row.purchaseOrderId,
             invoiceNumber: row.invoiceNumber,
             invoiceDate: new Date(row.invoiceDate),
             amount: Number(row.amount),
-            description: row.description || null
+            description: row.description || null,
+            allocationMode: row.allocationMode || 'PROPORTIONAL'
           }
         });
         await syncPOStatus(invoice.purchaseOrderId);

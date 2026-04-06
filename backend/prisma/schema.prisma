@@ -19,6 +19,12 @@ enum POStatus {
   FULLY_INVOICED
 }
 
+enum InvoiceAllocationMode {
+  EXACT
+  PROPORTIONAL
+  NONE
+}
+
 model User {
   id         String    @id @default(cuid())
   name       String
@@ -30,23 +36,23 @@ model User {
 }
 
 model Vendor {
-  id        String          @id @default(cuid())
-  name      String          @unique
-  email     String?
-  phone     String?
+  id             String          @id @default(cuid())
+  name           String          @unique
+  email          String?
+  phone          String?
   purchaseOrders PurchaseOrder[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model CostCode {
-  id          String      @id @default(cuid())
-  code        String      @unique
+  id          String       @id @default(cuid())
+  code        String       @unique
   name        String
   budgets     Budget[]
   poLineItems POLineItem[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model Budget {
@@ -77,29 +83,43 @@ model PurchaseOrder {
 }
 
 model POLineItem {
-  id              String        @id @default(cuid())
+  id              String              @id @default(cuid())
   purchaseOrderId String
   costCodeId      String
   description     String?
-  amount          Decimal       @db.Decimal(14, 2)
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  costCode        CostCode      @relation(fields: [costCodeId], references: [id])
+  amount          Decimal             @db.Decimal(14, 2)
+  purchaseOrder   PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  costCode        CostCode            @relation(fields: [costCodeId], references: [id])
+  invoiceAllocations InvoiceAllocation[]
 }
 
 model Invoice {
-  id              String        @id @default(cuid())
+  id              String                @id @default(cuid())
   purchaseOrderId String
   invoiceNumber   String
   invoiceDate     DateTime
-  amount          Decimal       @db.Decimal(14, 2)
+  amount          Decimal               @db.Decimal(14, 2)
   description     String?
-  cleared         Boolean       @default(false)
+  allocationMode  InvoiceAllocationMode @default(NONE)
+  allocations     InvoiceAllocation[]
+  cleared         Boolean               @default(false)
   clearanceDate   DateTime?
   clearedById     String?
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  clearedBy       User?         @relation("ClearedBy", fields: [clearedById], references: [id])
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  clearedBy       User?                 @relation("ClearedBy", fields: [clearedById], references: [id])
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@unique([purchaseOrderId, invoiceNumber])
+}
+
+model InvoiceAllocation {
+  id           String    @id @default(cuid())
+  invoiceId    String
+  poLineItemId String
+  amount       Decimal   @db.Decimal(14, 2)
+  invoice      Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  poLineItem   POLineItem @relation(fields: [poLineItemId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, poLineItemId])
 }

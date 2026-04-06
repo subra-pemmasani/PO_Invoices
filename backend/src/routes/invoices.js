@@ -6,18 +6,41 @@ import { syncPOStatus } from './purchaseOrders.js';
 
 const router = Router();
 
+const allocationSchema = z.object({
+  poLineItemId: z.string().min(1),
+  amount: z.number().positive()
+});
+
 const invoiceSchema = z.object({
   purchaseOrderId: z.string().min(1),
   invoiceNumber: z.string().min(1),
   invoiceDate: z.string(),
   amount: z.number().positive(),
-  description: z.string().optional()
+  description: z.string().optional(),
+  allocationMode: z.enum(['EXACT', 'PROPORTIONAL', 'NONE']),
+  allocations: z.array(allocationSchema).optional()
 });
+
+async function validateAllocation(data) {
+  if (data.allocationMode !== 'EXACT') return;
+  if (!data.allocations?.length) throw new Error('EXACT allocation requires allocations array');
+
+  const total = data.allocations.reduce((sum, a) => sum + Number(a.amount), 0);
+  if (Math.abs(total - Number(data.amount)) > 0.01) {
+    throw new Error('EXACT allocations must total invoice amount');
+  }
+
+  const ids = data.allocations.map((a) => a.poLineItemId);
+  const lineItems = await prisma.pOLineItem.findMany({ where: { id: { in: ids }, purchaseOrderId: data.purchaseOrderId } });
+  if (lineItems.length !== ids.length) {
+    throw new Error('One or more allocations do not belong to the selected purchase order');
+  }
+}
 
 router.get('/', requirePermission('read'), async (_req, res, next) => {
   try {
     const invoices = await prisma.invoice.findMany({
-      include: { purchaseOrder: true, clearedBy: true },
+      include: { purchaseOrder: true, clearedBy: true, allocations: true },
       orderBy: { invoiceDate: 'desc' }
     });
     res.json(invoices);
@@ -29,6 +52,7 @@ router.get('/', requirePermission('read'), async (_req, res, next) => {
 router.post('/', requirePermission('write'), async (req, res, next) => {
   try {
     const data = invoiceSchema.parse(req.body);
+    await validateAllocation(data);
 
     const po = await prisma.purchaseOrder.findUnique({
       where: { id: data.purchaseOrderId },
@@ -50,8 +74,13 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
         invoiceNumber: data.invoiceNumber,
         invoiceDate: new Date(data.invoiceDate),
         amount: data.amount,
-        description: data.description
-      }
+        description: data.description,
+        allocationMode: data.allocationMode,
+        allocations: data.allocationMode === 'EXACT'
+          ? { create: data.allocations.map((a) => ({ poLineItemId: a.poLineItemId, amount: a.amount })) }
+          : undefined
+      },
+      include: { allocations: true }
     });
 
     await syncPOStatus(data.purchaseOrderId);
@@ -85,8 +114,15 @@ router.put('/:id', requirePermission('write'), async (req, res, next) => {
   try {
     const data = invoiceSchema.partial().parse(req.body);
     const current = await prisma.invoice.findUnique({ where: { id: req.params.id } });
-    const purchaseOrderId = data.purchaseOrderId ?? current.purchaseOrderId;
+    const nextPayload = {
+      purchaseOrderId: data.purchaseOrderId ?? current.purchaseOrderId,
+      amount: data.amount ?? Number(current.amount),
+      allocationMode: data.allocationMode ?? current.allocationMode,
+      allocations: data.allocations
+    };
+    await validateAllocation(nextPayload);
 
+    const purchaseOrderId = data.purchaseOrderId ?? current.purchaseOrderId;
     const po = await prisma.purchaseOrder.findUnique({
       where: { id: purchaseOrderId },
       include: { invoices: true }
@@ -105,15 +141,25 @@ router.put('/:id', requirePermission('write'), async (req, res, next) => {
       });
     }
 
-    const updated = await prisma.invoice.update({
-      where: { id: req.params.id },
-      data: {
-        purchaseOrderId: data.purchaseOrderId,
-        invoiceNumber: data.invoiceNumber,
-        invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : undefined,
-        amount: data.amount,
-        description: data.description
+    const updated = await prisma.$transaction(async (tx) => {
+      if (data.allocationMode || data.allocations) {
+        await tx.invoiceAllocation.deleteMany({ where: { invoiceId: req.params.id } });
       }
+
+      return tx.invoice.update({
+        where: { id: req.params.id },
+        data: {
+          purchaseOrderId: data.purchaseOrderId,
+          invoiceNumber: data.invoiceNumber,
+          invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : undefined,
+          amount: data.amount,
+          description: data.description,
+          allocationMode: data.allocationMode,
+          allocations: (data.allocationMode ?? current.allocationMode) === 'EXACT' && data.allocations
+            ? { create: data.allocations.map((a) => ({ poLineItemId: a.poLineItemId, amount: a.amount })) }
+            : undefined
+        }
+      });
     });
 
     await syncPOStatus(updated.purchaseOrderId);
