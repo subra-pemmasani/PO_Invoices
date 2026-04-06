@@ -56,9 +56,7 @@ router.get('/summary', requirePermission('read'), async (req, res, next) => {
         const item = byCostCode.get(li.costCodeId);
         if (!item) continue;
         item.invoiced += attributedAmount;
-        if (invoice.cleared) {
-          item.cleared += attributedAmount;
-        }
+        if (invoice.cleared) item.cleared += attributedAmount;
       }
     }
 
@@ -67,11 +65,14 @@ router.get('/summary', requirePermission('read'), async (req, res, next) => {
       overBudget: row.committed > row.budget || row.invoiced > row.budget
     }));
 
-    const vendorSummary = await prisma.purchaseOrder.groupBy({
-      by: ['vendor'],
-      _sum: { totalAmount: true },
-      orderBy: { _sum: { totalAmount: 'desc' } }
-    });
+    const vendorPOs = await prisma.purchaseOrder.findMany({ include: { vendor: true } });
+    const vendorMap = new Map();
+    for (const po of vendorPOs) {
+      vendorMap.set(po.vendor.name, (vendorMap.get(po.vendor.name) || 0) + Number(po.totalAmount));
+    }
+    const vendorSummary = [...vendorMap.entries()]
+      .map(([vendor, total]) => ({ vendor, total }))
+      .sort((a, b) => b.total - a.total);
 
     const monthlyRows = await prisma.invoice.findMany({ select: { amount: true, invoiceDate: true } });
     const monthlyMap = new Map();

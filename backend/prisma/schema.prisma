@@ -20,23 +20,33 @@ enum POStatus {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  name      String
-  email     String    @unique
-  role      Role      @default(VIEWER)
+  id         String    @id @default(cuid())
+  name       String
+  email      String    @unique
+  role       Role      @default(VIEWER)
   clearances Invoice[] @relation("ClearedBy")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Vendor {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  email     String?
+  phone     String?
+  purchaseOrders PurchaseOrder[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 }
 
 model CostCode {
-  id           String         @id @default(cuid())
-  code         String         @unique
-  name         String
-  budgets      Budget[]
-  poLineItems  POLineItem[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  budgets     Budget[]
+  poLineItems POLineItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model Budget {
@@ -54,7 +64,8 @@ model Budget {
 model PurchaseOrder {
   id          String      @id @default(cuid())
   poNumber    String      @unique
-  vendor      String
+  vendorId    String
+  vendor      Vendor      @relation(fields: [vendorId], references: [id])
   issuedDate  DateTime
   description String?
   totalAmount Decimal     @db.Decimal(14, 2)

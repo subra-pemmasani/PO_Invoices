@@ -2,10 +2,10 @@ import { useState } from 'react';
 
 const blankItem = { costCodeId: '', amount: '', description: '' };
 
-export default function POForm({ costCodes, onSubmit }) {
+export default function POForm({ costCodes, vendors, onSubmit }) {
   const [form, setForm] = useState({
     poNumber: '',
-    vendor: '',
+    vendorId: '',
     issuedDate: new Date().toISOString().slice(0, 10),
     description: '',
     lineItems: [{ ...blankItem }]
@@ -31,7 +31,10 @@ export default function POForm({ costCodes, onSubmit }) {
       <h3>Create Purchase Order</h3>
       <div className="grid-4">
         <input value={form.poNumber} placeholder="PO Number" onChange={(e) => setForm({ ...form, poNumber: e.target.value })} required />
-        <input value={form.vendor} placeholder="Vendor" onChange={(e) => setForm({ ...form, vendor: e.target.value })} required />
+        <select value={form.vendorId} onChange={(e) => setForm({ ...form, vendorId: e.target.value })} required>
+          <option value="">Select vendor</option>
+          {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+        </select>
         <input type="date" value={form.issuedDate} onChange={(e) => setForm({ ...form, issuedDate: e.target.value })} required />
         <input value={form.description} placeholder="Description" onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </div>

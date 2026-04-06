@@ -14,7 +14,7 @@ const lineItemSchema = z.object({
 
 const poSchema = z.object({
   poNumber: z.string().min(1),
-  vendor: z.string().min(1),
+  vendorId: z.string().min(1),
   issuedDate: z.string(),
   description: z.string().optional(),
   lineItems: z.array(lineItemSchema).min(1)
@@ -33,7 +33,7 @@ async function syncPOStatus(purchaseOrderId) {
 router.get('/', requirePermission('read'), async (_req, res, next) => {
   try {
     const orders = await prisma.purchaseOrder.findMany({
-      include: { lineItems: { include: { costCode: true } }, invoices: true },
+      include: { vendor: true, lineItems: { include: { costCode: true } }, invoices: true },
       orderBy: { issuedDate: 'desc' }
     });
     res.json(orders);
@@ -50,7 +50,7 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
     const created = await prisma.purchaseOrder.create({
       data: {
         poNumber: data.poNumber,
-        vendor: data.vendor,
+        vendorId: data.vendorId,
         issuedDate: new Date(data.issuedDate),
         description: data.description,
         totalAmount,
@@ -88,7 +88,7 @@ router.put('/:id', requirePermission('write'), async (req, res, next) => {
         where: { id: req.params.id },
         data: {
           poNumber: data.poNumber,
-          vendor: data.vendor,
+          vendorId: data.vendorId,
           issuedDate: data.issuedDate ? new Date(data.issuedDate) : undefined,
           description: data.description,
           totalAmount,

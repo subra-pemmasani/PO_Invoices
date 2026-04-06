@@ -18,6 +18,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/po_invoices?schema=public
       PORT: 8080
+      ALLOW_BOOTSTRAP_ADMIN: "true"
     depends_on:
       db:
         condition: service_healthy

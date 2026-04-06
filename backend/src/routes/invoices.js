@@ -63,10 +63,7 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
 
 router.post('/:id/clear', requirePermission('approve'), async (req, res, next) => {
   try {
-    const userId = req.user?.userId;
-    if (!userId) {
-      return res.status(400).json({ error: 'x-user-id header required to clear invoices' });
-    }
+    const userId = req.user?.id;
 
     const updated = await prisma.invoice.update({
       where: { id: req.params.id },
