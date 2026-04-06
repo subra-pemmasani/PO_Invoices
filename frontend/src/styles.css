@@ -1,0 +1,114 @@
+:root {
+  font-family: Inter, system-ui, Arial, sans-serif;
+  background: #f6f8fb;
+  color: #1f2937;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.tabs button.active {
+  background: #1d4ed8;
+  color: white;
+}
+
+.panel {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
+}
+
+.grid-3,
+.grid-4,
+.grid-5 {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+input,
+select,
+button,
+.button-link {
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+}
+
+button,
+.button-link {
+  background: #2563eb;
+  color: white;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  padding: 0.6rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.user-chip {
+  background: #e5e7eb;
+  color: #111827;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+}
+
+.quick-login {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
