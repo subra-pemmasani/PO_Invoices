@@ -20,13 +20,15 @@ const poSchema = z.object({
   lineItems: z.array(lineItemSchema).min(1)
 });
 
+const statusSchema = z.object({ status: z.enum(['OPEN', 'PARTIALLY_INVOICED', 'FULLY_INVOICED', 'CLOSED', 'CANCELLED']) });
+
 async function syncPOStatus(purchaseOrderId) {
   const po = await prisma.purchaseOrder.findUnique({
     where: { id: purchaseOrderId },
     include: { invoices: true }
   });
   const invoiced = po.invoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
-  const status = derivePOStatus(po.totalAmount, invoiced);
+  const status = derivePOStatus(po.totalAmount, invoiced, po.status);
   await prisma.purchaseOrder.update({ where: { id: purchaseOrderId }, data: { status } });
 }
 
@@ -37,6 +39,32 @@ router.get('/', requirePermission('read'), async (_req, res, next) => {
       orderBy: { issuedDate: 'desc' }
     });
     res.json(orders);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id', requirePermission('read'), async (req, res, next) => {
+  try {
+    const po = await prisma.purchaseOrder.findUnique({
+      where: { id: req.params.id },
+      include: {
+        vendor: true,
+        lineItems: { include: { costCode: true } },
+        invoices: { include: { clearedBy: true } }
+      }
+    });
+    if (!po) return res.status(404).json({ error: 'PO not found' });
+
+    const totalInvoiced = po.invoices.reduce((sum, i) => sum + Number(i.amount), 0);
+    const totalCleared = po.invoices.filter((i) => i.cleared).reduce((sum, i) => sum + Number(i.amount), 0);
+
+    res.json({
+      ...po,
+      totalInvoiced,
+      totalCleared,
+      remainingUninvoiced: Number(po.totalAmount) - totalInvoiced
+    });
   } catch (error) {
     next(error);
   }
@@ -54,6 +82,8 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
         issuedDate: new Date(data.issuedDate),
         description: data.description,
         totalAmount,
+        createdBy: req.user.email,
+        updatedBy: req.user.email,
         lineItems: {
           create: data.lineItems.map((item) => ({
             costCodeId: item.costCodeId,
@@ -92,6 +122,7 @@ router.put('/:id', requirePermission('write'), async (req, res, next) => {
           issuedDate: data.issuedDate ? new Date(data.issuedDate) : undefined,
           description: data.description,
           totalAmount,
+          updatedBy: req.user.email,
           lineItems: data.lineItems
             ? {
                 create: data.lineItems.map((item) => ({
@@ -106,6 +137,16 @@ router.put('/:id', requirePermission('write'), async (req, res, next) => {
     });
 
     await syncPOStatus(req.params.id);
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/:id/status', requirePermission('write'), async (req, res, next) => {
+  try {
+    const { status } = statusSchema.parse(req.body);
+    const updated = await prisma.purchaseOrder.update({ where: { id: req.params.id }, data: { status, updatedBy: req.user.email } });
     res.json(updated);
   } catch (error) {
     next(error);

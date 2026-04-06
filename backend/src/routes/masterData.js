@@ -22,6 +22,10 @@ const userSchema = z.object({
   role: z.enum(['ADMIN', 'APPROVER', 'VIEWER'])
 });
 
+router.get('/me', requirePermission('read'), async (req, res) => {
+  res.json(req.user);
+});
+
 router.get('/cost-codes', requirePermission('read'), async (_req, res, next) => {
   try {
     const rows = await prisma.costCode.findMany({ orderBy: { code: 'asc' } });
@@ -34,7 +38,7 @@ router.get('/cost-codes', requirePermission('read'), async (_req, res, next) => 
 router.post('/cost-codes', requirePermission('write'), async (req, res, next) => {
   try {
     const data = costCodeSchema.parse(req.body);
-    const row = await prisma.costCode.create({ data });
+    const row = await prisma.costCode.create({ data: { ...data, createdBy: req.user.email, updatedBy: req.user.email } });
     res.status(201).json(row);
   } catch (error) {
     next(error);
@@ -53,7 +57,7 @@ router.get('/vendors', requirePermission('read'), async (_req, res, next) => {
 router.post('/vendors', requirePermission('write'), async (req, res, next) => {
   try {
     const data = vendorSchema.parse(req.body);
-    const row = await prisma.vendor.create({ data: { ...data, email: data.email || null } });
+    const row = await prisma.vendor.create({ data: { ...data, email: data.email || null, createdBy: req.user.email, updatedBy: req.user.email } });
     res.status(201).json(row);
   } catch (error) {
     next(error);

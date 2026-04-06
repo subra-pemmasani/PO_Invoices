@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export default function BudgetForm({ costCodes, onSubmit }) {
+export default function BudgetForm({ costCodes, onSubmit, canEdit = true }) {
   const [form, setForm] = useState({ costCodeId: '', year: new Date().getFullYear(), amount: '' });
 
   const submit = async (event) => {
@@ -13,16 +13,16 @@ export default function BudgetForm({ costCodes, onSubmit }) {
     <form className="panel" onSubmit={submit}>
       <h3>Create / Update Budget</h3>
       <div className="grid-3">
-        <select value={form.costCodeId} onChange={(e) => setForm({ ...form, costCodeId: e.target.value })} required>
+        <select value={form.costCodeId} onChange={(e) => setForm({ ...form, costCodeId: e.target.value })} required disabled={!canEdit}>
           <option value="">Select cost code</option>
           {costCodes.map((cc) => (
             <option key={cc.id} value={cc.id}>{cc.code} - {cc.name}</option>
           ))}
         </select>
-        <input type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} required />
-        <input type="number" step="0.01" value={form.amount} placeholder="Amount" onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
+        <input type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} required disabled={!canEdit} />
+        <input type="number" step="0.01" value={form.amount} placeholder="Amount" onChange={(e) => setForm({ ...form, amount: e.target.value })} required disabled={!canEdit} />
       </div>
-      <button type="submit">Save Budget</button>
+      <button type="submit" disabled={!canEdit}>Save Budget</button>
     </form>
   );
 }

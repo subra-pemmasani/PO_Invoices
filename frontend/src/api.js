@@ -52,6 +52,12 @@ async function downloadCsv(entity) {
 
 export const api = {
   getDashboard: (year) => request(`/dashboard/summary?year=${year}`),
+
+  getMe: () => request('/master/me'),
+  getPOById: (id) => request(`/purchase-orders/${id}`),
+  updatePOStatus: (id, status) => request(`/purchase-orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  getClearanceQueue: () => request('/invoices/clearance-queue'),
+
   getBudgets: () => request('/budgets'),
   createBudget: (payload) => request('/budgets', { method: 'POST', body: JSON.stringify(payload) }),
   getCostCodes: () => request('/master/cost-codes'),

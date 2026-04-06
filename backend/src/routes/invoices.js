@@ -5,6 +5,7 @@ import { requirePermission } from '../middleware/auth.js';
 import { syncPOStatus } from './purchaseOrders.js';
 
 const router = Router();
+const enforceVendorInvoiceUnique = process.env.ENFORCE_VENDOR_INVOICE_UNIQUE === 'true';
 
 const allocationSchema = z.object({
   poLineItemId: z.string().min(1),
@@ -13,6 +14,7 @@ const allocationSchema = z.object({
 
 const invoiceSchema = z.object({
   purchaseOrderId: z.string().min(1),
+  vendorId: z.string().optional(),
   invoiceNumber: z.string().min(1),
   invoiceDate: z.string(),
   amount: z.number().positive(),
@@ -37,13 +39,48 @@ async function validateAllocation(data) {
   }
 }
 
+async function validateVendorRules(data, currentInvoiceId = null) {
+  const po = await prisma.purchaseOrder.findUnique({ where: { id: data.purchaseOrderId } });
+  if (!po) throw new Error('PO not found');
+
+  if (data.vendorId && data.vendorId !== po.vendorId) {
+    throw new Error('Vendor mismatch: invoice vendor does not match PO vendor');
+  }
+
+  if (enforceVendorInvoiceUnique) {
+    const duplicate = await prisma.invoice.findFirst({
+      where: {
+        invoiceNumber: data.invoiceNumber,
+        purchaseOrder: { vendorId: po.vendorId },
+        ...(currentInvoiceId ? { id: { not: currentInvoiceId } } : {})
+      }
+    });
+    if (duplicate) throw new Error('Duplicate invoice number under same vendor');
+  }
+
+  return po;
+}
+
 router.get('/', requirePermission('read'), async (_req, res, next) => {
   try {
     const invoices = await prisma.invoice.findMany({
-      include: { purchaseOrder: true, clearedBy: true, allocations: true },
+      include: { purchaseOrder: { include: { vendor: true, lineItems: { include: { costCode: true } } } }, clearedBy: true, allocations: true },
       orderBy: { invoiceDate: 'desc' }
     });
     res.json(invoices);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/clearance-queue', requirePermission('approve'), async (_req, res, next) => {
+  try {
+    const rows = await prisma.invoice.findMany({
+      where: { cleared: false },
+      include: { purchaseOrder: { include: { vendor: true } } },
+      orderBy: { invoiceDate: 'asc' }
+    });
+    res.json(rows);
   } catch (error) {
     next(error);
   }
@@ -53,13 +90,11 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
   try {
     const data = invoiceSchema.parse(req.body);
     await validateAllocation(data);
+    const po = await validateVendorRules(data);
 
-    const po = await prisma.purchaseOrder.findUnique({
-      where: { id: data.purchaseOrderId },
-      include: { invoices: true }
-    });
+    const existingTotal = (await prisma.invoice.findMany({ where: { purchaseOrderId: data.purchaseOrderId } }))
+      .reduce((sum, invoice) => sum + Number(invoice.amount), 0);
 
-    const existingTotal = po.invoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
     if (existingTotal + data.amount > Number(po.totalAmount)) {
       return res.status(400).json({
         error: 'Invoice exceeds PO total',
@@ -76,6 +111,8 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
         amount: data.amount,
         description: data.description,
         allocationMode: data.allocationMode,
+        createdBy: req.user.email,
+        updatedBy: req.user.email,
         allocations: data.allocationMode === 'EXACT'
           ? { create: data.allocations.map((a) => ({ poLineItemId: a.poLineItemId, amount: a.amount })) }
           : undefined
@@ -92,14 +129,13 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
 
 router.post('/:id/clear', requirePermission('approve'), async (req, res, next) => {
   try {
-    const userId = req.user?.id;
-
     const updated = await prisma.invoice.update({
       where: { id: req.params.id },
       data: {
         cleared: true,
         clearanceDate: new Date(),
-        clearedById: userId
+        clearedById: req.user.id,
+        updatedBy: req.user.email
       },
       include: { clearedBy: true }
     });
@@ -116,24 +152,19 @@ router.put('/:id', requirePermission('write'), async (req, res, next) => {
     const current = await prisma.invoice.findUnique({ where: { id: req.params.id } });
     const nextPayload = {
       purchaseOrderId: data.purchaseOrderId ?? current.purchaseOrderId,
+      invoiceNumber: data.invoiceNumber ?? current.invoiceNumber,
       amount: data.amount ?? Number(current.amount),
       allocationMode: data.allocationMode ?? current.allocationMode,
-      allocations: data.allocations
+      allocations: data.allocations,
+      vendorId: data.vendorId
     };
     await validateAllocation(nextPayload);
+    const po = await validateVendorRules(nextPayload, req.params.id);
 
-    const purchaseOrderId = data.purchaseOrderId ?? current.purchaseOrderId;
-    const po = await prisma.purchaseOrder.findUnique({
-      where: { id: purchaseOrderId },
-      include: { invoices: true }
-    });
-
-    const currentOthersTotal = po.invoices
-      .filter((invoice) => invoice.id !== req.params.id)
+    const currentOthersTotal = (await prisma.invoice.findMany({ where: { purchaseOrderId: nextPayload.purchaseOrderId, id: { not: req.params.id } } }))
       .reduce((sum, invoice) => sum + Number(invoice.amount), 0);
-    const nextAmount = data.amount ?? Number(current.amount);
 
-    if (currentOthersTotal + nextAmount > Number(po.totalAmount)) {
+    if (currentOthersTotal + nextPayload.amount > Number(po.totalAmount)) {
       return res.status(400).json({
         error: 'Invoice exceeds PO total',
         poTotal: po.totalAmount,
@@ -155,6 +186,7 @@ router.put('/:id', requirePermission('write'), async (req, res, next) => {
           amount: data.amount,
           description: data.description,
           allocationMode: data.allocationMode,
+          updatedBy: req.user.email,
           allocations: (data.allocationMode ?? current.allocationMode) === 'EXACT' && data.allocations
             ? { create: data.allocations.map((a) => ({ poLineItemId: a.poLineItemId, amount: a.amount })) }
             : undefined

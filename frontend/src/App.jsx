@@ -5,12 +5,26 @@ import POForm from './components/POForm';
 import InvoiceForm from './components/InvoiceForm';
 import DashboardCharts from './components/DashboardCharts';
 
-const tabs = ['Dashboard', 'Master Data', 'Budgets', 'Purchase Orders', 'Invoices', 'Imports'];
+const screens = [
+  'Dashboard',
+  'Budget Management',
+  'PO List',
+  'PO Detail',
+  'Create/Edit PO',
+  'Invoice List',
+  'Invoice Clearance Queue',
+  'Vendor Master',
+  'Cost Code Master',
+  'User Management',
+  'Imports'
+];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('Dashboard');
+  const [activeScreen, setActiveScreen] = useState('Dashboard');
   const [authEmail, setAuthSessionEmail] = useState(localStorage.getItem('po_auth_email') || '');
   const [loginEmail, setLoginEmail] = useState(localStorage.getItem('po_auth_email') || '');
+  const [currentUser, setCurrentUser] = useState(null);
+
   const [costCodes, setCostCodes] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [users, setUsers] = useState([]);
@@ -18,7 +32,9 @@ export default function App() {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [dashboard, setDashboard] = useState(null);
-  const [vendorFilter, setVendorFilter] = useState('');
+  const [clearanceQueue, setClearanceQueue] = useState([]);
+  const [selectedPoId, setSelectedPoId] = useState('');
+  const [selectedPO, setSelectedPO] = useState(null);
   const [error, setError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
 
@@ -26,18 +42,24 @@ export default function App() {
   const [costCodeForm, setCostCodeForm] = useState({ code: '', name: '' });
   const [userForm, setUserForm] = useState({ name: '', email: '', role: 'VIEWER' });
 
+  const canEdit = currentUser?.role === 'ADMIN';
+  const canApprove = currentUser?.role === 'ADMIN' || currentUser?.role === 'APPROVER';
+
   const refresh = async () => {
     if (!authEmail) return;
     try {
-      const [cc, v, u, b, pos, inv, dash] = await Promise.all([
+      const [me, cc, v, u, b, pos, inv, dash, queue] = await Promise.all([
+        api.getMe(),
         api.getCostCodes(),
         api.getVendors(),
         api.getUsers(),
         api.getBudgets(),
         api.getPOs(),
         api.getInvoices(),
-        api.getDashboard(new Date().getFullYear())
+        api.getDashboard(new Date().getFullYear()),
+        api.getClearanceQueue().catch(() => [])
       ]);
+      setCurrentUser(me);
       setCostCodes(cc);
       setVendors(v);
       setUsers(u);
@@ -45,6 +67,7 @@ export default function App() {
       setPurchaseOrders(pos);
       setInvoices(inv);
       setDashboard(dash);
+      setClearanceQueue(queue);
       setError('');
     } catch (e) {
       setError(e.message);
@@ -55,11 +78,10 @@ export default function App() {
     refresh();
   }, [authEmail]);
 
-  const filteredPOs = useMemo(() => {
-    const term = vendorFilter.trim().toLowerCase();
-    if (!term) return purchaseOrders;
-    return purchaseOrders.filter((po) => po.vendor?.name?.toLowerCase().includes(term));
-  }, [purchaseOrders, vendorFilter]);
+  useEffect(() => {
+    if (!selectedPoId) return;
+    api.getPOById(selectedPoId).then(setSelectedPO).catch((e) => setError(e.message));
+  }, [selectedPoId]);
 
   const doUpload = async (entity, file) => {
     if (!file) return;
@@ -72,11 +94,13 @@ export default function App() {
     }
   };
 
+  const filteredPOs = useMemo(() => purchaseOrders, [purchaseOrders]);
+
   if (!authEmail) {
     return (
       <div className="app panel">
         <h2>Sign In</h2>
-        <p>Use one of the seeded users: <strong>admin@demo.local</strong>, <strong>approver@demo.local</strong>, or <strong>viewer@demo.local</strong>.</p>
+        <p>Use seeded users: <strong>admin@demo.local</strong>, <strong>approver@demo.local</strong>, <strong>viewer@demo.local</strong>.</p>
         <form onSubmit={(e) => { e.preventDefault(); setAuthEmail(loginEmail); setAuthSessionEmail(loginEmail); }}>
           <input value={loginEmail} placeholder="admin@demo.local" onChange={(e) => setLoginEmail(e.target.value)} required />
           <button type="submit">Continue</button>
@@ -95,171 +119,147 @@ export default function App() {
       <header>
         <h1>Budget, PO & Invoice Tracker</h1>
         <div className="actions">
-          <span className="user-chip">{authEmail}</span>
-          <button onClick={() => { setAuthEmail(''); setAuthSessionEmail(''); setLoginEmail(''); refresh(); }}>Sign out</button>
+          <span className="user-chip">{authEmail} ({currentUser?.role || '...'})</span>
+          <button onClick={() => { setAuthEmail(''); setAuthSessionEmail(''); setLoginEmail(''); }}>Sign out</button>
           <a className="button-link" href={api.exportExcel()} target="_blank">Export Excel</a>
         </div>
       </header>
 
       <nav className="tabs">
-        {tabs.map((tab) => (
-          <button key={tab} className={tab === activeTab ? 'active' : ''} onClick={() => setActiveTab(tab)}>{tab}</button>
+        {screens.map((screen) => (
+          <button key={screen} className={screen === activeScreen ? 'active' : ''} onClick={() => setActiveScreen(screen)}>{screen}</button>
         ))}
       </nav>
 
       {error && <div className="error">{error}</div>}
 
-      {activeTab === 'Dashboard' && (
+      {activeScreen === 'Dashboard' && (
         <section>
           <DashboardCharts summary={dashboard} />
-          <div className="panel">
-            <h3>Vendor Spend Summary</h3>
-            <table>
-              <thead><tr><th>Vendor</th><th>Total Spend</th></tr></thead>
-              <tbody>
-                {dashboard?.vendorSummary?.map((row) => (
-                  <tr key={row.vendor}><td>{row.vendor}</td><td>{Number(row.total).toFixed(2)}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </section>
       )}
 
-      {activeTab === 'Master Data' && (
+      {activeScreen === 'Budget Management' && (
         <section>
-          <div className="panel">
-            <h3>Add Vendor</h3>
-            <form className="grid-3" onSubmit={async (e) => { e.preventDefault(); await api.createVendor(vendorForm); setVendorForm({ name: '', email: '', phone: '' }); await refresh(); }}>
-              <input placeholder="Vendor name" value={vendorForm.name} onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })} required />
-              <input placeholder="Vendor email" value={vendorForm.email} onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })} />
-              <input placeholder="Vendor phone" value={vendorForm.phone} onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })} />
-              <button type="submit">Save Vendor</button>
-            </form>
-          </div>
-
-          <div className="panel">
-            <h3>Add Cost Code</h3>
-            <form className="grid-3" onSubmit={async (e) => { e.preventDefault(); await api.createCostCode(costCodeForm); setCostCodeForm({ code: '', name: '' }); await refresh(); }}>
-              <input placeholder="Code" value={costCodeForm.code} onChange={(e) => setCostCodeForm({ ...costCodeForm, code: e.target.value })} required />
-              <input placeholder="Name" value={costCodeForm.name} onChange={(e) => setCostCodeForm({ ...costCodeForm, name: e.target.value })} required />
-              <button type="submit">Save Cost Code</button>
-            </form>
-          </div>
-
-          <div className="panel">
-            <h3>Add User</h3>
-            <form className="grid-4" onSubmit={async (e) => { e.preventDefault(); await api.createUser(userForm); setUserForm({ name: '', email: '', role: 'VIEWER' }); await refresh(); }}>
-              <input placeholder="Name" value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} required />
-              <input placeholder="Email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required />
-              <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
-                <option value="ADMIN">ADMIN</option>
-                <option value="APPROVER">APPROVER</option>
-                <option value="VIEWER">VIEWER</option>
-              </select>
-              <button type="submit">Save User</button>
-            </form>
-          </div>
-
-          <div className="panel">
-            <h3>Current Master Data</h3>
-            <p>Vendors: {vendors.length} | Cost Codes: {costCodes.length} | Users: {users.length}</p>
-          </div>
+          <BudgetForm costCodes={costCodes} canEdit={canEdit} onSubmit={async (payload) => { await api.createBudget(payload); await refresh(); }} />
+          <div className="panel"><h3>Budgets</h3><table><thead><tr><th>Year</th><th>Cost Code</th><th>Amount</th></tr></thead><tbody>{budgets.map((b) => <tr key={b.id}><td>{b.year}</td><td>{b.costCode?.code}</td><td>{Number(b.amount).toFixed(2)}</td></tr>)}</tbody></table></div>
         </section>
       )}
 
-      {activeTab === 'Budgets' && (
-        <section>
-          <BudgetForm costCodes={costCodes} onSubmit={async (payload) => { await api.createBudget(payload); await refresh(); }} />
-          <div className="panel">
-            <h3>Budgets</h3>
-            <table>
-              <thead><tr><th>Year</th><th>Cost Code</th><th>Amount</th></tr></thead>
-              <tbody>
-                {budgets.map((b) => (
-                  <tr key={b.id}><td>{b.year}</td><td>{b.costCode?.code}</td><td>{Number(b.amount).toFixed(2)}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {activeScreen === 'PO List' && (
+        <section className="panel">
+          <h3>PO List</h3>
+          <table><thead><tr><th>PO #</th><th>Vendor</th><th>Status</th><th>Total</th><th>Select</th></tr></thead><tbody>{filteredPOs.map((po) => <tr key={po.id}><td>{po.poNumber}</td><td>{po.vendor?.name}</td><td>{po.status}</td><td>{Number(po.totalAmount).toFixed(2)}</td><td><button onClick={() => { setSelectedPoId(po.id); setActiveScreen('PO Detail'); }}>View</button></td></tr>)}</tbody></table>
         </section>
       )}
 
-      {activeTab === 'Purchase Orders' && (
-        <section>
-          <POForm costCodes={costCodes} vendors={vendors} onSubmit={async (payload) => { await api.createPO(payload); await refresh(); }} />
-          <div className="panel">
-            <h3>Purchase Orders</h3>
-            <input placeholder="Filter by vendor" value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)} />
-            <table>
-              <thead><tr><th>PO #</th><th>Vendor</th><th>Status</th><th>Total</th><th>Issued</th></tr></thead>
-              <tbody>
-                {filteredPOs.map((po) => (
-                  <tr key={po.id}><td>{po.poNumber}</td><td>{po.vendor?.name}</td><td>{po.status}</td><td>{Number(po.totalAmount).toFixed(2)}</td><td>{new Date(po.issuedDate).toLocaleDateString()}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {activeScreen === 'PO Detail' && (
+        <section className="panel">
+          <h3>PO Detail</h3>
+          {!selectedPO && <p>Select a PO from PO List.</p>}
+          {selectedPO && (
+            <>
+              <p><strong>PO:</strong> {selectedPO.poNumber} | <strong>Vendor:</strong> {selectedPO.vendor?.name} | <strong>Status:</strong> {selectedPO.status}</p>
+              <p><strong>Description:</strong> {selectedPO.description || '-'}</p>
+              <p><strong>Total Invoiced:</strong> {selectedPO.totalInvoiced?.toFixed(2)} | <strong>Total Cleared:</strong> {selectedPO.totalCleared?.toFixed(2)} | <strong>Remaining Uninvoiced:</strong> {selectedPO.remainingUninvoiced?.toFixed(2)}</p>
+              {canEdit && (
+                <div className="quick-login">
+                  {['OPEN', 'PARTIALLY_INVOICED', 'FULLY_INVOICED', 'CLOSED', 'CANCELLED'].map((status) => (
+                    <button key={status} onClick={async () => { await api.updatePOStatus(selectedPO.id, status); setSelectedPO(await api.getPOById(selectedPO.id)); await refresh(); }}>{status}</button>
+                  ))}
+                </div>
+              )}
+              <h4>Line Items</h4>
+              <ul>{selectedPO.lineItems.map((li) => <li key={li.id}>{li.costCode?.code} - {Number(li.amount).toFixed(2)} ({li.description || 'no description'})</li>)}</ul>
+              <h4>Linked Invoices</h4>
+              <ul>{selectedPO.invoices.map((inv) => <li key={inv.id}>{inv.invoiceNumber} - {Number(inv.amount).toFixed(2)} - {inv.cleared ? 'Cleared' : 'Pending'}</li>)}</ul>
+            </>
+          )}
         </section>
       )}
 
-      {activeTab === 'Invoices' && (
+      {activeScreen === 'Create/Edit PO' && (
         <section>
-          <InvoiceForm purchaseOrders={purchaseOrders} onSubmit={async (payload) => { await api.createInvoice(payload); await refresh(); }} />
-          <div className="panel">
-            <h3>Invoices</h3>
-            <table>
-              <thead><tr><th>Invoice #</th><th>PO #</th><th>Amount</th><th>Date</th><th>Cleared</th><th>Actions</th></tr></thead>
-              <tbody>
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td>{invoice.invoiceNumber}</td>
-                    <td>{invoice.purchaseOrder?.poNumber}</td>
-                    <td>{Number(invoice.amount).toFixed(2)}</td>
-                    <td>{new Date(invoice.invoiceDate).toLocaleDateString()}</td>
-                    <td>{invoice.cleared ? 'Yes' : 'No'}</td>
-                    <td>{!invoice.cleared && <button onClick={async () => { await api.clearInvoice(invoice.id); await refresh(); }}>Mark Cleared</button>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <POForm costCodes={costCodes} vendors={vendors} canEdit={canEdit} onSubmit={async (payload) => { await api.createPO(payload); await refresh(); }} />
+          <div className="panel"><p>Use PO List + PO Detail for review and status updates. Edit API is supported backend-side for future enhanced form editing.</p></div>
         </section>
       )}
 
-      {activeTab === 'Imports' && (
+      {activeScreen === 'Invoice List' && (
         <section>
-          <div className="panel">
-            <h3>CSV Uploads</h3>
-            <p>Upload CSV files with headers matching backend fields. Download template or existing data with IDs:</p>
-            <ul>
-              <li><a href="/csv-templates/vendors.csv" download>vendors.csv template</a></li>
-              <li><a href="/csv-templates/cost-codes.csv" download>cost-codes.csv template</a></li>
-              <li><a href="/csv-templates/budgets.csv" download>budgets.csv template</a></li>
-              <li><a href="/csv-templates/purchase-orders.csv" download>purchase-orders.csv template</a></li>
-              <li><a href="/csv-templates/po-line-items.csv" download>po-line-items.csv template</a></li>
-              <li><a href="/csv-templates/invoices.csv" download>invoices.csv template</a></li>
-            </ul>
-            <div className="grid-3">
-              <label>Vendors CSV <input type="file" accept=".csv" onChange={(e) => doUpload('vendors', e.target.files?.[0])} /></label>
-              <label>Cost Codes CSV <input type="file" accept=".csv" onChange={(e) => doUpload('cost-codes', e.target.files?.[0])} /></label>
-              <label>Budgets CSV <input type="file" accept=".csv" onChange={(e) => doUpload('budgets', e.target.files?.[0])} /></label>
-              <label>PO CSV <input type="file" accept=".csv" onChange={(e) => doUpload('purchase-orders', e.target.files?.[0])} /></label>
-              <label>PO Line Items CSV <input type="file" accept=".csv" onChange={(e) => doUpload('po-line-items', e.target.files?.[0])} /></label>
-              <label>Invoices CSV <input type="file" accept=".csv" onChange={(e) => doUpload('invoices', e.target.files?.[0])} /></label>
-            </div>
+          <InvoiceForm purchaseOrders={purchaseOrders} canEdit={canEdit} onSubmit={async (payload) => { await api.createInvoice(payload); await refresh(); }} />
+          <div className="panel"><h3>Invoices</h3><table><thead><tr><th>Invoice #</th><th>PO #</th><th>Vendor</th><th>Amount</th><th>Date</th><th>Created By</th><th>Updated By</th></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id}><td>{invoice.invoiceNumber}</td><td>{invoice.purchaseOrder?.poNumber}</td><td>{invoice.purchaseOrder?.vendor?.name}</td><td>{Number(invoice.amount).toFixed(2)}</td><td>{new Date(invoice.invoiceDate).toLocaleDateString()}</td><td>{invoice.createdBy || '-'}</td><td>{invoice.updatedBy || '-'}</td></tr>)}</tbody></table></div>
+        </section>
+      )}
 
-            <h4>Download current data with IDs</h4>
-            <div className="quick-login">
-              <button type="button" onClick={() => api.downloadCsv('vendors')}>Export vendors.csv</button>
-              <button type="button" onClick={() => api.downloadCsv('cost-codes')}>Export cost-codes.csv</button>
-              <button type="button" onClick={() => api.downloadCsv('budgets')}>Export budgets.csv</button>
-              <button type="button" onClick={() => api.downloadCsv('purchase-orders')}>Export purchase-orders.csv</button>
-              <button type="button" onClick={() => api.downloadCsv('po-line-items')}>Export po-line-items.csv</button>
-              <button type="button" onClick={() => api.downloadCsv('invoices')}>Export invoices.csv</button>
-            </div>
-            {uploadStatus && <p>{uploadStatus}</p>}
+      {activeScreen === 'Invoice Clearance Queue' && (
+        <section className="panel">
+          <h3>Invoice Clearance Queue</h3>
+          {!canApprove && <p>Only Approver/Admin can clear invoices.</p>}
+          <table><thead><tr><th>Invoice #</th><th>PO #</th><th>Vendor</th><th>Amount</th><th>Date</th><th>Action</th></tr></thead><tbody>{clearanceQueue.map((invoice) => <tr key={invoice.id}><td>{invoice.invoiceNumber}</td><td>{invoice.purchaseOrder?.poNumber}</td><td>{invoice.purchaseOrder?.vendor?.name}</td><td>{Number(invoice.amount).toFixed(2)}</td><td>{new Date(invoice.invoiceDate).toLocaleDateString()}</td><td><button disabled={!canApprove} onClick={async () => { await api.clearInvoice(invoice.id); await refresh(); }}>Clear</button></td></tr>)}</tbody></table>
+        </section>
+      )}
+
+      {activeScreen === 'Vendor Master' && (
+        <section className="panel">
+          <h3>Vendor Master</h3>
+          <form className="grid-3" onSubmit={async (e) => { e.preventDefault(); await api.createVendor(vendorForm); setVendorForm({ name: '', email: '', phone: '' }); await refresh(); }}>
+            <input placeholder="Vendor name" value={vendorForm.name} onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })} required disabled={!canEdit} />
+            <input placeholder="Vendor email" value={vendorForm.email} onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })} disabled={!canEdit} />
+            <input placeholder="Vendor phone" value={vendorForm.phone} onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })} disabled={!canEdit} />
+            <button type="submit" disabled={!canEdit}>Save Vendor</button>
+          </form>
+          <ul>{vendors.map((v) => <li key={v.id}>{v.name} ({v.id})</li>)}</ul>
+        </section>
+      )}
+
+      {activeScreen === 'Cost Code Master' && (
+        <section className="panel">
+          <h3>Cost Code Master</h3>
+          <form className="grid-3" onSubmit={async (e) => { e.preventDefault(); await api.createCostCode(costCodeForm); setCostCodeForm({ code: '', name: '' }); await refresh(); }}>
+            <input placeholder="Code" value={costCodeForm.code} onChange={(e) => setCostCodeForm({ ...costCodeForm, code: e.target.value })} required disabled={!canEdit} />
+            <input placeholder="Name" value={costCodeForm.name} onChange={(e) => setCostCodeForm({ ...costCodeForm, name: e.target.value })} required disabled={!canEdit} />
+            <button type="submit" disabled={!canEdit}>Save Cost Code</button>
+          </form>
+          <ul>{costCodes.map((c) => <li key={c.id}>{c.code} - {c.name} ({c.id})</li>)}</ul>
+        </section>
+      )}
+
+      {activeScreen === 'User Management' && (
+        <section className="panel">
+          <h3>User Management</h3>
+          <form className="grid-4" onSubmit={async (e) => { e.preventDefault(); await api.createUser(userForm); setUserForm({ name: '', email: '', role: 'VIEWER' }); await refresh(); }}>
+            <input placeholder="Name" value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} required disabled={!canEdit} />
+            <input placeholder="Email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required disabled={!canEdit} />
+            <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value })} disabled={!canEdit}><option value="ADMIN">ADMIN</option><option value="APPROVER">APPROVER</option><option value="VIEWER">VIEWER</option></select>
+            <button type="submit" disabled={!canEdit}>Save User</button>
+          </form>
+          <ul>{users.map((u) => <li key={u.id}>{u.name} - {u.email} ({u.role})</li>)}</ul>
+        </section>
+      )}
+
+      {activeScreen === 'Imports' && (
+        <section className="panel">
+          <h3>Imports</h3>
+          <p>PO multi-line import workflow: import purchase-orders first, then po-line-items.</p>
+          <div className="grid-3">
+            <label>Vendors CSV <input type="file" accept=".csv" onChange={(e) => doUpload('vendors', e.target.files?.[0])} /></label>
+            <label>Cost Codes CSV <input type="file" accept=".csv" onChange={(e) => doUpload('cost-codes', e.target.files?.[0])} /></label>
+            <label>Budgets CSV <input type="file" accept=".csv" onChange={(e) => doUpload('budgets', e.target.files?.[0])} /></label>
+            <label>PO CSV <input type="file" accept=".csv" onChange={(e) => doUpload('purchase-orders', e.target.files?.[0])} /></label>
+            <label>PO Line Items CSV <input type="file" accept=".csv" onChange={(e) => doUpload('po-line-items', e.target.files?.[0])} /></label>
+            <label>Invoices CSV <input type="file" accept=".csv" onChange={(e) => doUpload('invoices', e.target.files?.[0])} /></label>
           </div>
+          <h4>Download current data with IDs</h4>
+          <div className="quick-login">
+            <button type="button" onClick={() => api.downloadCsv('vendors')}>Export vendors.csv</button>
+            <button type="button" onClick={() => api.downloadCsv('cost-codes')}>Export cost-codes.csv</button>
+            <button type="button" onClick={() => api.downloadCsv('budgets')}>Export budgets.csv</button>
+            <button type="button" onClick={() => api.downloadCsv('purchase-orders')}>Export purchase-orders.csv</button>
+            <button type="button" onClick={() => api.downloadCsv('po-line-items')}>Export po-line-items.csv</button>
+            <button type="button" onClick={() => api.downloadCsv('invoices')}>Export invoices.csv</button>
+          </div>
+          {uploadStatus && <p>{uploadStatus}</p>}
         </section>
       )}
     </div>

@@ -25,8 +25,8 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
     const data = budgetSchema.parse(req.body);
     const created = await prisma.budget.upsert({
       where: { year_costCodeId: { year: data.year, costCodeId: data.costCodeId } },
-      update: { amount: data.amount },
-      create: data
+      update: { amount: data.amount, updatedBy: req.user.email },
+      create: { ...data, createdBy: req.user.email, updatedBy: req.user.email }
     });
     res.status(201).json(created);
   } catch (error) {
@@ -37,7 +37,7 @@ router.post('/', requirePermission('write'), async (req, res, next) => {
 router.put('/:id', requirePermission('write'), async (req, res, next) => {
   try {
     const data = budgetSchema.partial().parse(req.body);
-    const updated = await prisma.budget.update({ where: { id: req.params.id }, data });
+    const updated = await prisma.budget.update({ where: { id: req.params.id }, data: { ...data, updatedBy: req.user.email } });
     res.json(updated);
   } catch (error) {
     next(error);

@@ -15,8 +15,10 @@ enum Role {
 
 enum POStatus {
   OPEN
-  PARTIAL
+  PARTIALLY_INVOICED
   FULLY_INVOICED
+  CLOSED
+  CANCELLED
 }
 
 enum InvoiceAllocationMode {
@@ -41,6 +43,8 @@ model Vendor {
   email          String?
   phone          String?
   purchaseOrders PurchaseOrder[]
+  createdBy      String?
+  updatedBy      String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }
@@ -51,6 +55,8 @@ model CostCode {
   name        String
   budgets     Budget[]
   poLineItems POLineItem[]
+  createdBy   String?
+  updatedBy   String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -61,6 +67,8 @@ model Budget {
   amount     Decimal  @db.Decimal(14, 2)
   costCodeId String
   costCode   CostCode @relation(fields: [costCodeId], references: [id], onDelete: Cascade)
+  createdBy  String?
+  updatedBy  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -78,6 +86,8 @@ model PurchaseOrder {
   status      POStatus    @default(OPEN)
   lineItems   POLineItem[]
   invoices    Invoice[]
+  createdBy   String?
+  updatedBy   String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
@@ -107,6 +117,8 @@ model Invoice {
   clearedById     String?
   purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   clearedBy       User?                 @relation("ClearedBy", fields: [clearedById], references: [id])
+  createdBy       String?
+  updatedBy       String?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 

@@ -1,48 +1,66 @@
 # PO Invoices Tracker
 
-## First login (important)
-The app seeds demo users on startup. Use one of:
-- `admin@demo.local` (ADMIN)
-- `approver@demo.local` (APPROVER)
-- `viewer@demo.local` (VIEWER)
+## Priority 2 UX updates
+Frontend now includes dedicated screens:
+- Dashboard
+- Budget Management
+- PO List
+- PO Detail
+- Create/Edit PO
+- Invoice List
+- Invoice Clearance Queue
+- Vendor Master
+- Cost Code Master
+- User Management
+- Imports
 
-If you login as `viewer@demo.local`, create/save actions are blocked by role permissions.
+Invoice creation shows selected PO snapshot:
+- vendor
+- PO total
+- invoiced so far
+- remaining balance
+- cost code breakdown
 
-## Why you saw "Missing x-user-email header"
-This happens when the session email was not persisted before API calls. Login flow has been fixed to use a dedicated login field and only start authenticated calls after submit.
+PO detail screen shows:
+- header details
+- line items
+- linked invoices
+- total invoiced
+- total cleared
+- remaining uninvoiced balance
 
-## Seeded sample data
-On container boot, app runs:
-1. `prisma generate`
-2. retry `prisma db push`
-3. `node src/seed.js`
-4. start server
+## Priority 3 controls and auditability
+### Audit fields
+Added created/updated audit columns in data model:
+- `createdBy`
+- `updatedBy`
+- existing `createdAt` / `updatedAt`
+- existing `clearedBy` / `clearanceDate`
 
-Seed includes users, vendors, cost codes, budgets, sample POs, line items, invoices, and allocations.
+### Soft rules
+- prevent duplicate PO numbers (unique DB constraint)
+- optional duplicate invoice per vendor check (`ENFORCE_VENDOR_INVOICE_UNIQUE=true`)
+- prevent over-invoicing
+- vendor mismatch validation on invoice create/update
 
-## Imports with IDs (recommended workflow)
-In Imports tab, use **Download current data with IDs** for:
-- vendors
-- cost-codes
-- budgets
-- purchase-orders
-- po-line-items
-- invoices
+### PO statuses
+- OPEN
+- PARTIALLY_INVOICED
+- FULLY_INVOICED
+- CLOSED
+- CANCELLED
 
-Then copy IDs directly into your import CSVs.
+### Role-aware UI
+- Admin: create/edit
+- Approver: clear invoices
+- Viewer: read-only
 
-### PO with multiple cost-code lines
-Use 2 CSVs:
-1. import `purchase-orders` (PO headers)
-2. import `po-line-items` (each line row = one cost-code line)
+## Import workflow
+For PO with many cost-code lines:
+1. import `purchase-orders`
+2. import `po-line-items`
 
-## CSV templates
-- `/csv-templates/vendors.csv`
-- `/csv-templates/cost-codes.csv`
-- `/csv-templates/budgets.csv`
-- `/csv-templates/purchase-orders.csv`
-- `/csv-templates/po-line-items.csv`
-- `/csv-templates/invoices.csv`
+Use Imports screen export buttons to download current data with IDs.
 
 ## Run
 ```bash
