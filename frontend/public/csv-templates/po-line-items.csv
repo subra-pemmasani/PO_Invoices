@@ -1,0 +1,2 @@
+purchaseOrderId,costCodeId,amount,description
+REPLACE_WITH_PO_ID,REPLACE_WITH_COST_CODE_ID,12000,Line item description
